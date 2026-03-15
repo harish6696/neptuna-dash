@@ -3,6 +3,7 @@ from dash import dcc, html, Input, Output, State
 import plotly.graph_objects as go
 import data_utils
 import pandas as pd
+import subprocess
 
 app = dash.Dash(__name__)
 
@@ -13,11 +14,13 @@ app.layout = html.Div([
         html.Div([
             html.Label("Folder Path 1:"),
             dcc.Input(id='path-1', type='text', placeholder='Enter path to folder 1', style={'width': '100%'}),
+            html.Button('Browse', id='browse-path-1', n_clicks=0, style={'marginTop': '8px'}),
         ], style={'width': '45%', 'display': 'inline-block', 'padding': '10px'}),
         
         html.Div([
             html.Label("Folder Path 2:"),
             dcc.Input(id='path-2', type='text', placeholder='Enter path to folder 2', style={'width': '100%'}),
+            html.Button('Browse', id='browse-path-2', n_clicks=0, style={'marginTop': '8px'}),
         ], style={'width': '45%', 'display': 'inline-block', 'padding': '10px'}),
     ]),
     
@@ -73,6 +76,39 @@ def update_graph(n_clicks, path1, path2):
     )
     
     return fig, ""
+
+
+@app.callback(
+    [Output('path-1', 'value'),
+     Output('path-2', 'value')],
+    [Input('browse-path-1', 'n_clicks'),
+     Input('browse-path-2', 'n_clicks')],
+    [State('path-1', 'value'),
+     State('path-2', 'value')],
+    prevent_initial_call=True
+)
+def browse_for_folder(_browse1_clicks, _browse2_clicks, path1, path2):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return path1, path2
+
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    result = subprocess.run(
+        ["osascript", "-e",
+         'POSIX path of (choose folder with prompt "Select a folder")'],
+        capture_output=True, text=True, timeout=120,
+    )
+    selected_path = result.stdout.strip().rstrip("/")
+
+    if not selected_path:
+        return path1, path2
+
+    if trigger_id == 'browse-path-1':
+        return selected_path, path2
+    if trigger_id == 'browse-path-2':
+        return path1, selected_path
+    return path1, path2
 
 if __name__ == '__main__':
     app.run(debug=True, port=5121)
