@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output, State, ALL, ctx, no_update, MATCH
+from dash import dcc, html, Input, Output, State, ALL, ctx, no_update, MATCH, clientside_callback
 import plotly.graph_objects as go
 import data_utils
 import pandas as pd
@@ -23,28 +23,31 @@ def make_folder_row(index, value=''):
                 type='text',
                 value=value or '',
                 placeholder=f'Enter path to folder {index + 1}',
-                style={'flex': '1', 'minWidth': '0'},
             ),
             html.Button(
                 'Browse',
                 id={'type': 'browse-btn', 'index': index},
                 n_clicks=0,
-                style={'marginLeft': '8px', 'flexShrink': '0'},
+                className='btn btn-browse',
             ),
-        ], style={'display': 'flex', 'alignItems': 'center', 'marginTop': '4px'}),
-    ], style={
-        'width': '48%',
-        'minWidth': '320px',
-        'display': 'inline-block',
-        'padding': '10px',
-        'verticalAlign': 'top',
-    })
+        ], className='input-group'),
+    ], className='folder-row')
 
 
-app.layout = html.Div([
-    html.H1("Metric Comparison Dashboard by Harish Chodu"),
+app.layout = html.Div(id='app-root', **{'data-theme': 'dark'}, children=[
 
+    dcc.Store(id='theme-store', data='dark'),
     dcc.Store(id='folder-count', data=2),
+
+    html.Div(className='header-row', children=[
+        html.H1("Metric Comparison Dashboard"),
+        html.Button(
+            id='theme-toggle-btn',
+            n_clicks=0,
+            className='theme-toggle',
+            children=['☀️ Light'],
+        ),
+    ]),
 
     html.Div(
         id='folder-inputs-container',
@@ -56,40 +59,47 @@ app.layout = html.Div([
             '+ Add Data',
             id='add-folder-btn',
             n_clicks=0,
-            style={
-                'margin': '10px 20px',
-                'padding': '8px 18px',
-                'backgroundColor': '#00CC96',
-                'color': 'white',
-                'border': 'none',
-                'borderRadius': '4px',
-                'cursor': 'pointer',
-                'fontWeight': 'bold',
-            },
+            className='btn btn-add',
         ),
     ]),
 
-    html.Button('Compare Metrics', id='compare-btn', n_clicks=0, style={'margin': '20px'}),
+    html.Button(
+        'Compare Metrics',
+        id='compare-btn',
+        n_clicks=0,
+        className='btn btn-compare',
+        style={'margin': '12px 10px'},
+    ),
 
-    html.Div(id='error-message', style={'color': 'red', 'padding': '10px'}),
+    html.Div(id='error-message', className='error-msg'),
 
-    dcc.Graph(id='comparison-graph'),
+    html.Div(className='graph-card', children=[
+        dcc.Graph(id='comparison-graph'),
+    ]),
 
-    html.Div([
+    html.Div(className='logs-section', children=[
         html.H3("Logs"),
-        html.Div(id='logs-content', style={
-            'whiteSpace': 'pre-wrap',
-            'fontFamily': 'monospace',
-            'fontSize': '13px',
-            'backgroundColor': '#1e1e1e',
-            'color': '#d4d4d4',
-            'padding': '12px',
-            'borderRadius': '6px',
-            'maxHeight': '220px',
-            'overflowY': 'auto',
-        }),
-    ], style={'padding': '10px 20px', 'marginTop': '10px'}),
+        html.Div(id='logs-content', className='logs-box'),
+    ]),
 ])
+
+
+# ── Theme toggle (clientside for instant switch) ────────────────
+app.clientside_callback(
+    """
+    function(n_clicks, currentTheme) {
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.getElementById('app-root').setAttribute('data-theme', newTheme);
+        const label = newTheme === 'dark' ? '☀️ Light' : '🌙 Dark';
+        return [newTheme, label];
+    }
+    """,
+    Output('theme-store', 'data'),
+    Output('theme-toggle-btn', 'children'),
+    Input('theme-toggle-btn', 'n_clicks'),
+    State('theme-store', 'data'),
+    prevent_initial_call=True,
+)
 
 
 @app.callback(
@@ -133,9 +143,10 @@ def browse_for_folder(_n_clicks, current_value):
      Output('logs-content', 'children')],
     Input('compare-btn', 'n_clicks'),
     State({'type': 'folder-path', 'index': ALL}, 'value'),
+    State('theme-store', 'data'),
     prevent_initial_call=True,
 )
-def update_graph(n_clicks, all_paths):
+def update_graph(n_clicks, all_paths, theme):
     if not n_clicks:
         return go.Figure(), "", ""
 
@@ -183,6 +194,8 @@ def update_graph(n_clicks, all_paths):
 
     logs.append(f"\n✓ {len(merged)} common metrics matched for comparison")
 
+    plotly_template = 'plotly_dark' if theme == 'dark' else 'plotly_white'
+
     fig = go.Figure(data=[
         go.Bar(
             name=label,
@@ -194,11 +207,15 @@ def update_graph(n_clicks, all_paths):
     ])
 
     fig.update_layout(
+        template=plotly_template,
         barmode='group',
         title='Metric Comparison',
         xaxis_title='Metric',
         yaxis_title='Value',
         legend_title='Folders',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(family='Inter, sans-serif'),
     )
 
     return fig, "", "\n".join(logs)
